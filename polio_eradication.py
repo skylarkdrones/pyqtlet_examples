@@ -16,7 +16,7 @@ from PyQt5.QtWidgets import QApplication, QHBoxLayout, QLabel, QSlider, QVBoxLay
 from pyqtlet import L, MapWidget
 
 DATA_PATH = 'data/polio_data.json'
-MAX_SIZE = 200
+MAX_SIZE = 50
 
 class PolioEradiactor(QWidget):
     def __init__(self, data_path=DATA_PATH):
@@ -29,6 +29,7 @@ class PolioEradiactor(QWidget):
         self.show()
 
     def _init_ui(self):
+        # Create the widgets and the layout
         self.layout = QVBoxLayout()
         self.mapWidget = MapWidget()
         self.yearLayout = QHBoxLayout()
@@ -44,41 +45,53 @@ class PolioEradiactor(QWidget):
     def _init_map(self):
         self.map = L.map(self.mapWidget)
         self.map.setView([0, 0], 1)
-        L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {'noWrap': 'true'}).addTo(self.map)
+        L.tileLayer('http://{s}.tile.stamen.com/watercolor/{z}/{x}/{y}.png', {'noWrap': 'true'}).addTo(self.map)
+        # Create empty layer group to hold the data
         self.layerGroup = L.layerGroup()
         self.map.addLayer(self.layerGroup)
-        self.yearLayers = {} 
         
     def _load_data(self):
         with open(self.data_path) as data_in:
             self.data = json.load(data_in)
-        years = [int(year) for year in next(iter(self.data.values()))['occurences']]
-        occurences = [self.data[country]['occurences'][str(year)] for country in self.data for year in years]
-        high = max(occurences)
-        firstYear, lastYear = min(years), max(years)
-        for key in self.data:
-            country = self.data[key]
-            for year in country['occurences']:
-                if not country['occurences'][year]:
-                    continue
-                num = country['occurences'][year]
-                if year not in self.yearLayers:
-                    self.yearLayers[year] = []
-                coords = [country['coordinates'][1], country['coordinates'][0]]
-                yearMarker = L.circleMarker(coords, {'radius': self._getMarkerRadius(num, high)})
-                yearMarker.bindPopup('In {year}, {country} has {num} incidents of polio reported'.format(year=year, country=key, num=num))
+        years = [int(year) for year in self.data['incidents']]
+        self._getMaxIncidents()
+        # We want to create markers for each country based on number
+        # of incidents and save them for every year in the dataset
+        self.yearLayers = {} 
+        for year in self.data['incidents']:
+            self.yearLayers[year] = []
+            for country in self.data['incidents'][year]:
+                coords = self.data['countries'][country]['coordinates']
+                number = self.data['incidents'][year][country]
+                radius = self._getMarkerRadius(number)
+                # While creating markers, options can also be passed
+                yearMarker = L.circleMarker(coords, {'radius': radius, 'color': '#C62828', 'weight': 1})
+                # A popup allows extra data to be shown on click of the marker
+                yearMarker.bindPopup('In {year}, {country} has {number} incidents of polio reported'.format(year=year, country=country, number=number))
                 self.yearLayers[year].append(yearMarker)
-        self.yearSlider.setMinimum(firstYear)
-        self.yearSlider.setMaximum(lastYear)
-        self.yearLabel.setText(str(firstYear))
+        # Initialise the slider based on the data
+        self.yearSlider.setMinimum(min(years))
+        self.yearSlider.setMaximum(max(years))
+        self.yearLabel.setText(str(min(years)))
 
-    def _getMarkerRadius(self, value, max_occurences):
-        # Exponentially show the size of the marker
-        power = (1/2)
-        return MAX_SIZE * (value**power) / (max_occurences**power) 
+    def _getMaxIncidents(self):
+        incidents = []
+        for year in self.data['incidents']:
+            for country in self.data['incidents'][year]:
+                incidents.append(self.data['incidents'][year][country])
+        self.highIncidents = max(incidents)
+
+    def _getMarkerRadius(self, value):
+        # We want the marker size to be exponential to the number
+        power = (1/3)
+        return MAX_SIZE * (value**power) / (self.highIncidents**power) 
 
     def _linkSlider(self, year):
+        # Every time the slider changes, we want to change the label
+        # showing the year, and the data shown on the map
         self.yearLabel.setText(str(year))
+        # If any method has not been implemented in pyqtlet, we can
+        # use the runJavaScript method to run the method
         self.map.runJavaScript('{lg}.clearLayers()'.format(lg=self.layerGroup.jsName))
         for marker in self.yearLayers[str(year)]:
             self.layerGroup.addLayer(marker)
