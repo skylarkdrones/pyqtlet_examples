@@ -92,7 +92,7 @@ class PolioEradiactor(QWidget):
         self.yearLabel.setText(str(year))
         # If any method has not been implemented in pyqtlet, we can
         # use the runJavaScript method to run the method
-        self.map.runJavaScript('{lg}.clearLayers()'.format(lg=self.layerGroup.jsName))
+        self.layerGroup.clearLayers()
         for marker in self.yearLayers[str(year)]:
             self.layerGroup.addLayer(marker)
 
